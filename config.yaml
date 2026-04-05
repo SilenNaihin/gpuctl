@@ -1,0 +1,40 @@
+poll_interval: 5
+ssh_key: ~/.ssh/gpuctl_key
+ssh_user: azureuser
+hosts:
+  - name: h100-dev-box
+    ip: 4.154.170.26
+    region: westus2
+    gpus: 2
+    gpu_type: H100 NVL
+    vram_gb: 96
+  - name: h100-dev-box-3
+    ip: 20.38.0.252
+    region: westus3
+    gpus: 2
+    gpu_type: H100
+    vram_gb: 80
+  - name: h100-dev-box-4
+    ip: 172.182.215.198
+    region: westus3
+    gpus: 2
+    gpu_type: H100
+    vram_gb: 80
+  - name: h100-dev-box-5
+    ip: 172.182.228.231
+    region: westus3
+    gpus: 2
+    gpu_type: H100
+    vram_gb: 80
+  - name: h100-dev-box-6
+    ip: 40.80.93.150
+    region: centralindia
+    gpus: 2
+    gpu_type: H100 NVL
+    vram_gb: 96
+  - name: a100-backup-1
+    ip: localhost
+    region: westus2
+    gpus: 1
+    gpu_type: A100
+    vram_gb: 80
