@@ -4,10 +4,10 @@ import type { FleetStatus } from "../types";
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl bg-card border border-border px-6 py-5">
-      <span className="text-xs font-medium uppercase tracking-wider text-muted">{label}</span>
-      <span className="text-3xl font-semibold tracking-tight">{value}</span>
-      {sub && <span className="text-sm text-muted">{sub}</span>}
+    <div className="flex flex-col gap-1.5 rounded-2xl bg-card border border-border px-6 py-6 transition-colors hover:bg-card-hover">
+      <span className="text-sm font-medium text-muted">{label}</span>
+      <span className="text-4xl font-semibold tracking-tight">{value}</span>
+      {sub && <span className="text-sm text-subtle">{sub}</span>}
     </div>
   );
 }
@@ -20,11 +20,11 @@ export default function FleetOverview({ fleet }: { fleet: FleetStatus }) {
       : 0;
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
       <StatCard
         label="GPUs Online"
         value={`${fleet.active_gpus}/${fleet.total_gpus}`}
-        sub={`${onlineHosts} hosts`}
+        sub={`${onlineHosts} hosts connected`}
       />
       <StatCard
         label="VRAM Used"

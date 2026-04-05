@@ -5,9 +5,11 @@ import type { HistoryPoint } from "../types";
 interface Props {
   history: HistoryPoint[];
   hostName: string;
+  processCount?: number;
+  onHostClick?: () => void;
 }
 
-function miniSparkline(points: number[], height: number, width: number, color: string) {
+function miniSparkline(points: number[], height: number, width: number, color: string, id: string) {
   if (points.length < 2) return null;
 
   const max = Math.max(...points, 1);
@@ -21,33 +23,30 @@ function miniSparkline(points: number[], height: number, width: number, color: s
     })
     .join(" ");
 
-  // Area fill
   const areaPath = `${pathData} L ${width} ${height} L 0 ${height} Z`;
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height }}>
       <defs>
-        <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`grad-${id}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={areaPath} fill={`url(#grad-${color})`} />
+      <path d={areaPath} fill={`url(#grad-${id})`} />
       <path d={pathData} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-export default function UtilChart({ history, hostName }: Props) {
+export default function UtilChart({ history, hostName, processCount, onHostClick }: Props) {
   if (!history || history.length < 2) return null;
 
-  // Get last 60 points (~5 minutes)
   const recent = history.slice(-60);
   const gpuCount = recent[0]?.gpus?.length || 0;
 
   if (gpuCount === 0) return null;
 
-  // Compute average utilization across all GPUs per point
   const utilPoints = recent.map((p) =>
     p.gpus.reduce((s, g) => s + g.utilization_gpu, 0) / p.gpus.length
   );
@@ -57,26 +56,43 @@ export default function UtilChart({ history, hostName }: Props) {
     return total > 0 ? (used / total) * 100 : 0;
   });
 
+  const chartId = hostName.replace(/[^a-zA-Z0-9]/g, "-");
+
   return (
-    <div className="rounded-2xl bg-card border border-border p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm font-medium">{hostName}</span>
-        <span className="text-[10px] text-muted">Last 5 min</span>
+    <div className="rounded-2xl bg-card border border-border p-6 transition-colors hover:border-muted/30">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-medium">{hostName}</span>
+          {processCount !== undefined && processCount > 0 && (
+            <button
+              onClick={onHostClick}
+              className="rounded-lg bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+            >
+              {processCount} process{processCount !== 1 ? "es" : ""} active
+            </button>
+          )}
+          {processCount === 0 && (
+            <span className="rounded-lg bg-surface px-2.5 py-1 text-xs text-muted">
+              idle
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-muted">Last 5 min</span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-5 sm:grid-cols-2">
         <div>
-          <div className="mb-1 flex items-center justify-between text-xs text-muted">
+          <div className="mb-2 flex items-center justify-between text-sm text-muted">
             <span>Compute</span>
-            <span className="font-mono">{utilPoints[utilPoints.length - 1]?.toFixed(0)}%</span>
+            <span className="font-mono font-medium text-foreground">{utilPoints[utilPoints.length - 1]?.toFixed(0)}%</span>
           </div>
-          {miniSparkline(utilPoints, 48, 200, "#3b82f6")}
+          {miniSparkline(utilPoints, 52, 200, "#3b82f6", `${chartId}-util`)}
         </div>
         <div>
-          <div className="mb-1 flex items-center justify-between text-xs text-muted">
+          <div className="mb-2 flex items-center justify-between text-sm text-muted">
             <span>Memory</span>
-            <span className="font-mono">{memPoints[memPoints.length - 1]?.toFixed(0)}%</span>
+            <span className="font-mono font-medium text-foreground">{memPoints[memPoints.length - 1]?.toFixed(0)}%</span>
           </div>
-          {miniSparkline(memPoints, 48, 200, "#a855f7")}
+          {miniSparkline(memPoints, 52, 200, "#a855f7", `${chartId}-mem`)}
         </div>
       </div>
     </div>
