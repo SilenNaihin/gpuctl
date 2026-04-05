@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { FleetStatus, HostHistory } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export function useFleetStatus(intervalMs = 5000) {
   const [data, setData] = useState<FleetStatus | null>(null);
