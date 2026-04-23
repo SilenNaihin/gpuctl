@@ -145,8 +145,9 @@ class Collector:
                 gpu_csv = await _run_local(GPU_QUERY)
                 proc_csv = await _run_local(PROCESS_QUERY)
             else:
-                gpu_csv = await _run_ssh(ip, GPU_QUERY, self._ssh_user, self._ssh_key)
-                proc_csv = await _run_ssh(ip, PROCESS_QUERY, self._ssh_user, self._ssh_key)
+                ssh_user = host.get("ssh_user", self._ssh_user)
+                gpu_csv = await _run_ssh(ip, GPU_QUERY, ssh_user, self._ssh_key)
+                proc_csv = await _run_ssh(ip, PROCESS_QUERY, ssh_user, self._ssh_key)
 
             gpus = _parse_gpu_info(gpu_csv)
             processes = _parse_process_info(proc_csv)
