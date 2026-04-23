@@ -40,3 +40,51 @@ export interface HistoryPoint {
 }
 
 export type HostHistory = Record<string, HistoryPoint[]>;
+
+// --- Slurm types ---
+
+export interface SlurmJob {
+  job_id: string;
+  name: string;
+  user: string;
+  account: string;
+  state: string;
+  node: string;
+  gpus: number;
+  cpus: number;
+  time_elapsed: string;
+  time_limit: string;
+  submit_time: string;
+}
+
+export interface SlurmNode {
+  name: string;
+  state: string;
+  cpus_total: number;
+  cpus_alloc: number;
+  memory_total_mb: number;
+  memory_alloc_mb: number;
+  gpus_total: number;
+  gpus_alloc: number;
+  reason: string;
+}
+
+export interface SlurmUser {
+  user: string;
+  account: string;
+  shares: number;
+  gpus_running: number;
+  jobs_running: number;
+  jobs_pending: number;
+}
+
+export interface SlurmStatus {
+  jobs: SlurmJob[];
+  nodes: SlurmNode[];
+  users: SlurmUser[];
+  total_gpus: number;
+  allocated_gpus: number;
+  available: boolean;
+  error: string;
+  last_updated: string;
+}

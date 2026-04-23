@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from gpuctl.collector import Collector, load_config
-from gpuctl.models import FleetStatus
+from gpuctl.models import FleetStatus, SlurmStatus
+from gpuctl.slurm_collector import SlurmCollector
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -17,24 +18,28 @@ logging.basicConfig(
 )
 
 collector: Collector | None = None
+slurm_collector: SlurmCollector | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global collector
+    global collector, slurm_collector
     config = load_config()
     collector = Collector(config)
     collector.start()
-    logger.info("Collector started")
+    slurm_collector = SlurmCollector()
+    slurm_collector.start()
+    logger.info("Collectors started")
     yield
     collector.stop()
-    logger.info("Collector stopped")
+    slurm_collector.stop()
+    logger.info("Collectors stopped")
 
 
 app = FastAPI(
     title="gpuctl",
     description="GPU fleet monitoring dashboard backend",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -68,6 +73,12 @@ async def get_host_history(host_name: str) -> list[dict[str, Any]]:
 async def get_all_history() -> dict[str, list[dict[str, Any]]]:
     assert collector is not None
     return collector.get_all_history()
+
+
+@app.get("/api/slurm", response_model=SlurmStatus)
+async def get_slurm_status() -> SlurmStatus:
+    assert slurm_collector is not None
+    return slurm_collector.get_status()
 
 
 # Mount the Next.js static export as a fallback for the frontend.

@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useCallback } from "react";
-import { useFleetStatus, useFleetHistory, useRelativeTime } from "./hooks";
+import { useRef, useCallback, useState } from "react";
+import { useFleetStatus, useFleetHistory, useSlurmStatus, useRelativeTime } from "./hooks";
 import FleetOverview from "./components/FleetOverview";
 import HostCard from "./components/HostCard";
 import UtilChart from "./components/UtilChart";
+import SlurmOverview from "./components/SlurmOverview";
 import ThemeToggle from "./components/ThemeToggle";
 
 function ConnectionError({ message }: { message: string }) {
@@ -40,7 +41,9 @@ function Loading() {
 export default function Home() {
   const { data: fleet, error, lastRefreshed, isRefreshing, refresh } = useFleetStatus(5000);
   const history = useFleetHistory(10000);
+  const slurm = useSlurmStatus(10000);
   const relativeTime = useRelativeTime(lastRefreshed);
+  const [slurmExpanded, setSlurmExpanded] = useState(false);
 
   const hostRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -133,6 +136,35 @@ export default function Home() {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Slurm Section — collapsed by default */}
+      {slurm && (
+        <div className="mt-10">
+          <button
+            onClick={() => setSlurmExpanded(!slurmExpanded)}
+            className="mb-5 flex w-full items-center gap-2 text-left"
+          >
+            <svg
+              className={`h-4 w-4 text-muted transition-transform duration-200 ${slurmExpanded ? "rotate-90" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+            <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
+              Slurm Scheduler
+            </h2>
+            {!slurmExpanded && slurm.available && (
+              <span className="ml-2 text-xs text-muted">
+                {slurm.allocated_gpus}/{slurm.total_gpus} GPUs allocated
+              </span>
+            )}
+          </button>
+          {slurmExpanded && <SlurmOverview slurm={slurm} />}
         </div>
       )}
 

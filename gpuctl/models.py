@@ -37,3 +37,51 @@ class FleetStatus(BaseModel):
     active_gpus: int
     total_vram_gb: float
     used_vram_gb: float
+
+
+# --- Slurm models ---
+
+class SlurmJob(BaseModel):
+    job_id: str
+    name: str
+    user: str
+    account: str
+    state: str
+    node: str
+    gpus: int
+    cpus: int
+    time_elapsed: str
+    time_limit: str
+    submit_time: str
+
+
+class SlurmNode(BaseModel):
+    name: str
+    state: str
+    cpus_total: int
+    cpus_alloc: int
+    memory_total_mb: int
+    memory_alloc_mb: int
+    gpus_total: int
+    gpus_alloc: int
+    reason: str
+
+
+class SlurmUser(BaseModel):
+    user: str
+    account: str
+    shares: int
+    gpus_running: int
+    jobs_running: int
+    jobs_pending: int
+
+
+class SlurmStatus(BaseModel):
+    jobs: list[SlurmJob] = Field(default_factory=list)
+    nodes: list[SlurmNode] = Field(default_factory=list)
+    users: list[SlurmUser] = Field(default_factory=list)
+    total_gpus: int = 0
+    allocated_gpus: int = 0
+    available: bool = True
+    error: str = ""
+    last_updated: datetime = Field(default_factory=datetime.utcnow)

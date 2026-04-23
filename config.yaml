@@ -32,9 +32,22 @@ hosts:
     gpus: 2
     gpu_type: H100 NVL
     vram_gb: 96
+  - name: h100-8gpu-1
+    ip: 192.222.52.255
+    region: eastus
+    gpus: 8
+    gpu_type: H100
+    vram_gb: 80
+    ssh_user: admin
   - name: a100-backup-1
     ip: localhost
     region: westus2
     gpus: 1
     gpu_type: A100
     vram_gb: 80
+  - name: h100-dev-box-7
+    ip: 52.140.112.76
+    region: centralindia
+    gpus: 2
+    gpu_type: H100 NVL
+    vram_gb: 96
