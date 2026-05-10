@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useMemo, useState } from "react";
 import { useFleetStatus, useFleetHistory, useSlurmStatus, useRelativeTime } from "./hooks";
 import FleetOverview from "./components/FleetOverview";
 import HostCard from "./components/HostCard";
@@ -66,6 +66,20 @@ export default function Home() {
     processCountMap[host.name] = host.processes.length;
   }
 
+  // Split history into online vs unreachable
+  const onlineNames = new Set(onlineHosts.map((h) => h.name));
+  const onlineHistory = useMemo(() => {
+    if (!history) return null;
+    const entries = Object.entries(history).filter(([name]) => onlineNames.has(name));
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
+  }, [history, onlineNames]);
+  const unreachableHistory = useMemo(() => {
+    if (!history) return null;
+    const entries = Object.entries(history).filter(([name]) => !onlineNames.has(name));
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
+  }, [history, onlineNames]);
+  const [unreachableExpanded, setUnreachableExpanded] = useState(false);
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Header */}
@@ -119,14 +133,14 @@ export default function Home() {
       {/* Fleet Overview Stats */}
       <FleetOverview fleet={fleet} />
 
-      {/* Charts */}
-      {history && Object.keys(history).length > 0 && (
+      {/* Charts — online hosts */}
+      {onlineHistory && (
         <div className="mt-10">
           <h2 className="mb-5 text-sm font-medium uppercase tracking-wider text-muted">
             Utilization Trends
           </h2>
           <div className="grid gap-5 lg:grid-cols-2">
-            {Object.entries(history).map(([name, points]) => (
+            {Object.entries(onlineHistory).map(([name, points]) => (
               <UtilChart
                 key={name}
                 hostName={name}
@@ -136,6 +150,42 @@ export default function Home() {
               />
             ))}
           </div>
+
+          {/* Unreachable hosts dropdown */}
+          {unreachableHistory && (
+            <div className="mt-6">
+              <button
+                onClick={() => setUnreachableExpanded(!unreachableExpanded)}
+                className="flex items-center gap-2"
+              >
+                <svg
+                  className={`h-3.5 w-3.5 text-muted transition-transform duration-200 ${unreachableExpanded ? "rotate-90" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+                <span className="text-xs font-medium uppercase tracking-wider text-muted">
+                  Unreachable ({Object.keys(unreachableHistory).length})
+                </span>
+              </button>
+              {unreachableExpanded && (
+                <div className="mt-4 grid gap-5 lg:grid-cols-2 opacity-60">
+                  {Object.entries(unreachableHistory).map(([name, points]) => (
+                    <UtilChart
+                      key={name}
+                      hostName={name}
+                      history={points}
+                      processCount={processCountMap[name]}
+                      onHostClick={() => scrollToHost(name)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
