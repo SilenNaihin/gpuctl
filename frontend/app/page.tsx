@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useMemo, useState } from "react";
+import { useRef, useCallback, useState } from "react";
 import { useFleetStatus, useFleetHistory, useSlurmStatus, useRelativeTime } from "./hooks";
 import FleetOverview from "./components/FleetOverview";
 import HostCard from "./components/HostCard";
@@ -44,6 +44,7 @@ export default function Home() {
   const slurm = useSlurmStatus(10000);
   const relativeTime = useRelativeTime(lastRefreshed);
   const [slurmExpanded, setSlurmExpanded] = useState(false);
+  const [unreachableExpanded, setUnreachableExpanded] = useState(false);
 
   const hostRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -68,17 +69,12 @@ export default function Home() {
 
   // Split history into online vs unreachable
   const onlineNames = new Set(onlineHosts.map((h) => h.name));
-  const onlineHistory = useMemo(() => {
-    if (!history) return null;
-    const entries = Object.entries(history).filter(([name]) => onlineNames.has(name));
-    return entries.length > 0 ? Object.fromEntries(entries) : null;
-  }, [history, onlineNames]);
-  const unreachableHistory = useMemo(() => {
-    if (!history) return null;
-    const entries = Object.entries(history).filter(([name]) => !onlineNames.has(name));
-    return entries.length > 0 ? Object.fromEntries(entries) : null;
-  }, [history, onlineNames]);
-  const [unreachableExpanded, setUnreachableExpanded] = useState(false);
+  const onlineHistory = history
+    ? Object.fromEntries(Object.entries(history).filter(([name]) => onlineNames.has(name)))
+    : null;
+  const unreachableHistory = history
+    ? Object.fromEntries(Object.entries(history).filter(([name]) => !onlineNames.has(name)))
+    : null;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -134,7 +130,7 @@ export default function Home() {
       <FleetOverview fleet={fleet} />
 
       {/* Charts — online hosts */}
-      {onlineHistory && (
+      {onlineHistory && Object.keys(onlineHistory).length > 0 && (
         <div className="mt-10">
           <h2 className="mb-5 text-sm font-medium uppercase tracking-wider text-muted">
             Utilization Trends
@@ -152,7 +148,7 @@ export default function Home() {
           </div>
 
           {/* Unreachable hosts dropdown */}
-          {unreachableHistory && (
+          {unreachableHistory && Object.keys(unreachableHistory).length > 0 && (
             <div className="mt-6">
               <button
                 onClick={() => setUnreachableExpanded(!unreachableExpanded)}
