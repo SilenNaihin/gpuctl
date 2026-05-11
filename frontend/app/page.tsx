@@ -67,13 +67,10 @@ export default function Home() {
     processCountMap[host.name] = host.processes.length;
   }
 
-  // Split history into online vs unreachable
+  // Filter history to only online hosts
   const onlineNames = new Set(onlineHosts.map((h) => h.name));
   const onlineHistory = history
     ? Object.fromEntries(Object.entries(history).filter(([name]) => onlineNames.has(name)))
-    : null;
-  const unreachableHistory = history
-    ? Object.fromEntries(Object.entries(history).filter(([name]) => !onlineNames.has(name)))
     : null;
 
   return (
@@ -148,7 +145,7 @@ export default function Home() {
           </div>
 
           {/* Unreachable hosts dropdown */}
-          {unreachableHistory && Object.keys(unreachableHistory).length > 0 && (
+          {offlineHosts.length > 0 && (
             <div className="mt-6">
               <button
                 onClick={() => setUnreachableExpanded(!unreachableExpanded)}
@@ -164,19 +161,26 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
                 <span className="text-xs font-medium uppercase tracking-wider text-muted">
-                  Unreachable ({Object.keys(unreachableHistory).length})
+                  Unreachable ({offlineHosts.length})
                 </span>
               </button>
               {unreachableExpanded && (
-                <div className="mt-4 grid gap-5 lg:grid-cols-2 opacity-60">
-                  {Object.entries(unreachableHistory).map(([name, points]) => (
-                    <UtilChart
-                      key={name}
-                      hostName={name}
-                      history={points}
-                      processCount={processCountMap[name]}
-                      onHostClick={() => scrollToHost(name)}
-                    />
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  {offlineHosts.map((host) => (
+                    <div
+                      key={host.name}
+                      className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4 opacity-60"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-2.5 w-2.5 rounded-full bg-red/60" />
+                        <span className="text-sm font-medium">{host.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted">
+                        <span>{host.gpu_type}</span>
+                        <span>{host.region}</span>
+                        <span className="text-red">unreachable</span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
