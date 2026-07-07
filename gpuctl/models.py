@@ -39,6 +39,33 @@ class FleetStatus(BaseModel):
     used_vram_gb: float
 
 
+# --- Account usage models ---
+
+class UsageItem(BaseModel):
+    label: str
+    value: str
+    percent: float | None = Field(
+        default=None, description="0-100; rendered as a progress bar when set"
+    )
+    sub: str = ""
+
+
+class ProviderUsage(BaseModel):
+    id: str
+    name: str
+    status: str = Field(description="ok | auth_needed | error")
+    headline: str = "—"
+    headline_label: str = ""
+    sub: str = ""
+    error: str = ""
+    items: list[UsageItem] = Field(default_factory=list)
+    last_updated: datetime | None = None
+
+
+class UsageStatus(BaseModel):
+    providers: list[ProviderUsage] = Field(default_factory=list)
+
+
 # --- Slurm models ---
 
 class SlurmJob(BaseModel):

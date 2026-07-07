@@ -1,6 +1,36 @@
 poll_interval: 5
 ssh_key: ~/.ssh/gpuctl_key
 ssh_user: azureuser
+
+# Model-provider account usage (credits / spend / rate limits)
+usage:
+  poll_interval_minutes: 30          # Claude + Codex
+  azure_poll_interval_minutes: 60    # Cost Management API throttles hard
+  bedrock_poll_interval_minutes: 180 # Cost Explorer bills $0.01/request
+  codex_auth_path: ~/.codex/auth.json
+  # Legacy sponsorship balances have no API — paste from
+  # microsoftazuresponsorships.com and update occasionally:
+  azure_sponsorship:
+    remaining: 151007
+    total: 350000
+    used: 198993
+    as_of: 2026-07-07
+    offer_start: 2023-12-20  # offer runs through 2027-12-21
+    # Optional auto-refresh: paste the Cookie header from a logged-in
+    # microsoftazuresponsorships.com browser session (works until it expires).
+    # Or set the AZURE_SPONSORSHIP_COOKIE env var instead.
+    # portal_cookie: ".AspNet.Cookies=..."
+  azure_subscriptions:
+    - name: Sponsorship
+      id: dbbf045b-65ab-44aa-80bf-8ae5ddb9f871
+      sponsorship: true
+    - name: Subscription 1
+      id: 800aa0f3-2eb4-47a2-a0a1-7f463a53d1d7
+  bedrock_profiles:
+    - name: stackwise
+      profile: default   # stackwise-agent user lacks ce:GetCostAndUsage; default (silen) is the same account
+    - name: endflow
+      profile: endflow
 hosts:
   - name: h100-dev-box
     ip: 4.154.170.26
@@ -47,6 +77,12 @@ hosts:
     vram_gb: 80
   - name: h100-dev-box-7
     ip: 52.140.112.76
+    region: centralindia
+    gpus: 2
+    gpu_type: H100 NVL
+    vram_gb: 96
+  - name: h100-dev-box-8
+    ip: 20.198.121.110
     region: centralindia
     gpus: 2
     gpu_type: H100 NVL

@@ -8,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from gpuctl.collector import Collector, load_config
-from gpuctl.models import FleetStatus, SlurmStatus
+from gpuctl.models import FleetStatus, SlurmStatus, UsageStatus
 from gpuctl.slurm_collector import SlurmCollector
+from gpuctl.usage_collector import UsageCollector
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -19,20 +20,24 @@ logging.basicConfig(
 
 collector: Collector | None = None
 slurm_collector: SlurmCollector | None = None
+usage_collector: UsageCollector | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global collector, slurm_collector
+    global collector, slurm_collector, usage_collector
     config = load_config()
     collector = Collector(config)
     collector.start()
     slurm_collector = SlurmCollector()
     slurm_collector.start()
+    usage_collector = UsageCollector(config)
+    usage_collector.start()
     logger.info("Collectors started")
     yield
     collector.stop()
     slurm_collector.stop()
+    usage_collector.stop()
     logger.info("Collectors stopped")
 
 
@@ -79,6 +84,19 @@ async def get_all_history() -> dict[str, list[dict[str, Any]]]:
 async def get_slurm_status() -> SlurmStatus:
     assert slurm_collector is not None
     return slurm_collector.get_status()
+
+
+@app.get("/api/usage", response_model=UsageStatus)
+async def get_usage() -> UsageStatus:
+    assert usage_collector is not None
+    return usage_collector.get_status()
+
+
+@app.post("/api/usage/refresh")
+async def refresh_usage() -> dict[str, str]:
+    assert usage_collector is not None
+    usage_collector.refresh_now()
+    return {"status": "refresh scheduled"}
 
 
 # Mount the Next.js static export as a fallback for the frontend.

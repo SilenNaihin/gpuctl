@@ -41,6 +41,31 @@ export interface HistoryPoint {
 
 export type HostHistory = Record<string, HistoryPoint[]>;
 
+// --- Account usage types ---
+
+export interface UsageItem {
+  label: string;
+  value: string;
+  percent: number | null;
+  sub: string;
+}
+
+export interface ProviderUsage {
+  id: string;
+  name: string;
+  status: "ok" | "auth_needed" | "error";
+  headline: string;
+  headline_label: string;
+  sub: string;
+  error: string;
+  items: UsageItem[];
+  last_updated: string | null;
+}
+
+export interface UsageStatus {
+  providers: ProviderUsage[];
+}
+
 // --- Slurm types ---
 
 export interface SlurmJob {

@@ -54,11 +54,27 @@ hosts:
     vram_gb: 80
 ```
 
+## Model account usage
+
+The dashboard shows a "Model Accounts" strip with spend / quota per provider,
+expandable for detail. Configured under `usage:` in `config.yaml`.
+
+| Provider | Source | Headline |
+|----------|--------|----------|
+| Claude | Anthropic Admin API (`ANTHROPIC_ADMIN_KEY` env or `~/.zshrc`; cost report amounts are in **cents**) | API spend this month + per-model tokens. Credit balance is console-only. |
+| OpenAI | Codex/ChatGPT OAuth tokens from `~/.codex/auth.json` (refreshed + persisted automatically); platform API spend via `OPENAI_ADMIN_KEY` (stubbed while the account is deactivated) | % of Codex 5h rate-limit window used; weekly window + API spend in expansion |
+| Azure | `az rest` → Cost Management query (throttles hard; cached, hourly poll). Sponsorship credit balance has **no API** — enter it under `usage.azure_sponsorship` in config.yaml from microsoftazuresponsorships.com. Each entry is recorded to `~/.gpuctl/sponsorship_history.json` to derive a drain rate; the headline auto-projects forward when the entry is stale. Optionally set `portal_cookie` (or `AZURE_SPONSORSHIP_COOKIE`) to a logged-in portal session cookie for live auto-refresh until it expires | Sponsorship credits left (live, entered, or drain-projected); drain $/day + depletion date in expansion |
+| Bedrock | `aws ce get-cost-and-usage` × 2 per profile, excluding Credit/Refund record types — both accounts run on AWS credits, so unfiltered costs net to $0 (bills $0.01/request → 3h poll) | Month-to-date gross Bedrock usage across accounts; per-model breakdown + credits applied in expansion |
+
+`POST /api/usage/refresh` forces an immediate re-poll.
+
 ## API
 
 - `GET /api/status` — Current fleet status (all hosts, GPUs, processes)
 - `GET /api/history` — Rolling 1-hour utilization history for all hosts
 - `GET /api/history/{host_name}` — History for a single host
+- `GET /api/usage` — Model-provider account usage (Claude, Codex, Azure, Bedrock)
+- `POST /api/usage/refresh` — Force an immediate usage re-poll
 
 ## Development
 

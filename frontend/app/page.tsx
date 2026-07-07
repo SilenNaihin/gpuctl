@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useCallback, useState } from "react";
-import { useFleetStatus, useFleetHistory, useSlurmStatus, useRelativeTime } from "./hooks";
+import { useFleetStatus, useFleetHistory, useSlurmStatus, useUsageStatus, useRelativeTime } from "./hooks";
 import FleetOverview from "./components/FleetOverview";
+import UsageSection from "./components/UsageSection";
 import HostCard from "./components/HostCard";
 import UtilChart from "./components/UtilChart";
 import SlurmOverview from "./components/SlurmOverview";
@@ -42,6 +43,7 @@ export default function Home() {
   const { data: fleet, error, lastRefreshed, isRefreshing, refresh } = useFleetStatus(5000);
   const history = useFleetHistory(10000);
   const slurm = useSlurmStatus(10000);
+  const usage = useUsageStatus(60000);
   const relativeTime = useRelativeTime(lastRefreshed);
   const [slurmExpanded, setSlurmExpanded] = useState(false);
   const [unreachableExpanded, setUnreachableExpanded] = useState(false);
@@ -125,6 +127,9 @@ export default function Home() {
 
       {/* Fleet Overview Stats */}
       <FleetOverview fleet={fleet} />
+
+      {/* Model Account Usage */}
+      {usage && <UsageSection providers={usage.providers} />}
 
       {/* Charts — online hosts */}
       {onlineHistory && Object.keys(onlineHistory).length > 0 && (

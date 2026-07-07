@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { FleetStatus, HostHistory, SlurmStatus } from "./types";
+import type { FleetStatus, HostHistory, SlurmStatus, UsageStatus } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -66,6 +66,28 @@ export function useSlurmStatus(intervalMs = 10000) {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/slurm`);
+      if (!res.ok) return;
+      setData(await res.json());
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const id = setInterval(fetchData, intervalMs);
+    return () => clearInterval(id);
+  }, [fetchData, intervalMs]);
+
+  return data;
+}
+
+export function useUsageStatus(intervalMs = 60000) {
+  const [data, setData] = useState<UsageStatus | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/usage`);
       if (!res.ok) return;
       setData(await res.json());
     } catch {
