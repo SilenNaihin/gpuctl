@@ -411,6 +411,10 @@ class OpenAIProvider(UsageProvider):
             "Authorization": f"Bearer {access}",
             "chatgpt-account-id": account_id,
             "User-Agent": "codex-cli",
+            # Cloudflare 403s requests without Accept headers from some
+            # (e.g. Azure datacenter) egress IPs
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
         }
         # chatgpt.com rate-limits this endpoint to roughly one request
         # per minute per account and answers bursts with 403
