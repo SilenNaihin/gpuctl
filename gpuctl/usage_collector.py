@@ -274,43 +274,42 @@ class AnthropicProvider(UsageProvider):
                         agg["out"] += r.get("output_tokens", 0)
                 for model, agg in sorted(
                     by_model.items(), key=lambda kv: -(kv[1]["in"] + kv[1]["out"])
-                )[:6]:
+                )[:4]:
                     items.append(UsageItem(
                         label=model,
-                        value=f"{agg['in'] / 1e6:.1f}M in / {agg['out'] / 1e6:.1f}M out",
-                        sub="tokens this month",
+                        value=f"{agg['in'] / 1e6:,.0f}M in · {agg['out'] / 1e6:,.1f}M out",
                     ))
 
         if anchor is not None:
             remaining_est = float(self.credits["remaining"]) - since_anchor
+            credits_total = self.credits.get("total")
             items.insert(0, UsageItem(
-                label="Credits left (est.)",
-                value=_fmt_usd(remaining_est),
-                sub=f"{_fmt_usd(float(self.credits['remaining']))} on "
-                    f"{self.credits['as_of']} minus {_fmt_usd(since_anchor)} "
-                    "spent since — update anchor from console.anthropic.com",
-            ))
-            items.insert(1, UsageItem(
-                label="API spend", value=_fmt_usd(total), sub="this month",
+                label="Balance anchor",
+                value=str(self.credits["as_of"]),
+                sub="update from console.anthropic.com → Billing",
             ))
             return ProviderUsage(
                 id=self.id, name=self.name, status="ok",
                 headline=_fmt_usd(remaining_est),
                 headline_label="credits left (est.)",
                 sub=f"{_fmt_usd(total)} spent this month",
+                percent=(
+                    100 * (1 - remaining_est / float(credits_total))
+                    if credits_total else None
+                ),
                 items=items,
                 last_updated=datetime.now(timezone.utc),
             )
 
         items.append(UsageItem(
             label="Credit balance", value="console only",
-            sub="no API — set usage.anthropic_credits {remaining, as_of} in "
-                "config.yaml from console.anthropic.com → Billing",
+            sub="set usage.anthropic_credits in config.yaml to track it here",
         ))
         return ProviderUsage(
             id=self.id, name=self.name, status="ok",
             headline=_fmt_usd(total),
-            headline_label="API spend this month",
+            headline_label="spent this month",
+            sub="API usage · credit balance not anchored yet",
             items=items,
             last_updated=datetime.now(timezone.utc),
         )
@@ -409,7 +408,7 @@ class OpenAIProvider(UsageProvider):
             return UsageItem(
                 label="Platform API spend",
                 value="—",
-                sub="account deactivated — set OPENAI_ADMIN_KEY once reactivated",
+                sub="account deactivated; set OPENAI_ADMIN_KEY when it's back",
             )
         start = int(_month_start().timestamp())
         try:
@@ -489,12 +488,16 @@ class OpenAIProvider(UsageProvider):
                 label="Flex credits", value=str(credits["balance"]), sub="remaining",
             ))
         items.append(await self._api_spend_item())
+        reset = _fmt_reset(
+            (rate.get("primary_window") or {}).get("reset_after_seconds")
+        )
         return ProviderUsage(
             id=self.id, name=self.name,
             status="error" if rate.get("limit_reached") else "ok",
             headline=f"{primary_pct:.0f}%",
-            headline_label="of Codex 5h limit used",
-            sub=f"ChatGPT {plan}",
+            headline_label="of Codex 5h limit",
+            sub=f"ChatGPT {plan} · {reset}" if reset else f"ChatGPT {plan}",
+            percent=primary_pct,
             items=items,
             last_updated=datetime.now(timezone.utc),
         )
@@ -638,7 +641,6 @@ class AzureProvider(UsageProvider):
             UsageItem(
                 label=f"{sub['name']} · {svc}",
                 value=_fmt_usd(cost),
-                sub="this month",
             )
             for svc, cost in sorted(by_service.items(), key=lambda x: -x[1])[:4]
             if cost >= 0.01
@@ -668,30 +670,21 @@ class AzureProvider(UsageProvider):
         projected: float | None = None
         if remaining is not None:
             drain, projected = self._sponsorship_estimate(remaining, as_of)
-            items.append(UsageItem(
-                label="Sponsorship credits left",
-                value=_fmt_usd(remaining),
-                percent=(
-                    100 * (1 - remaining / float(self.sponsorship["total"]))
-                    if self.sponsorship.get("total") else None
-                ),
-                sub=(
-                    f"live from portal ({today})" if portal_balance is not None
-                    else f"as of {as_of} — update config from "
-                         "microsoftazuresponsorships.com (no API)"
-                ),
-            ))
             if drain:
                 depleted = (
                     datetime.now(timezone.utc)
                     + timedelta(days=(projected or remaining) / drain)
                 ).strftime("%b %Y")
                 items.append(UsageItem(
-                    label="Sponsorship drain",
+                    label="Burn rate",
                     value=f"{_fmt_usd(drain)}/day",
-                    sub=f"≈ {_fmt_usd(drain * 30)}/month — depleted around "
-                        f"{depleted} at this rate",
+                    sub=f"depleted ~{depleted} at this rate",
                 ))
+            items.append(UsageItem(
+                label="Balance anchor",
+                value=f"live ({today})" if portal_balance is not None else as_of,
+                sub="update from microsoftazuresponsorships.com",
+            ))
 
         for i, sub in enumerate(self.subscriptions):
             if i:
@@ -701,22 +694,15 @@ class AzureProvider(UsageProvider):
                 sub_total, sub_burn, sub_items = await self._query_sub(sub)
                 total += sub_total
                 burn += sub_burn
-                note = "subscription total this month"
+                note = ""
                 if sub_total < 0.005 and sub.get("sponsorship"):
-                    note = ("sponsorship usage is not reported through the "
-                            "Azure cost APIs — see the sponsorship portal")
+                    note = "usage not visible via Azure APIs — portal only"
                 items.append(UsageItem(
                     label=sub["name"], value=_fmt_usd(sub_total), sub=note,
                 ))
-                items.extend(sub_items)
+                items.extend(sub_items[:3])
             except Exception as e:
                 errors.append(f"{sub['name']}: {e}")
-
-        if burn >= 0.01:
-            items.append(UsageItem(
-                label="Burn rate", value=f"{_fmt_usd(burn)}/day",
-                sub="average this month (API-visible spend only)",
-            ))
 
         if errors and not items:
             throttled = any("429" in e for e in errors)
@@ -727,15 +713,25 @@ class AzureProvider(UsageProvider):
                 last_updated=datetime.now(timezone.utc),
             )
 
+        percent: float | None = None
         if remaining is not None:
             # Show the drain-projected balance when the manual entry is stale
-            if projected is not None and projected < remaining:
-                headline = _fmt_usd(projected)
-                headline_label = "credits left (est.)"
-                sub_text = "sponsorship"
+            shown = (
+                projected if projected is not None and projected < remaining
+                else remaining
+            )
+            headline = _fmt_usd(shown)
+            headline_label = (
+                "credits left (est.)" if shown != remaining else "credits left"
+            )
+            sponsorship_total = self.sponsorship.get("total")
+            if sponsorship_total:
+                used = float(sponsorship_total) - shown
+                percent = 100 * used / float(sponsorship_total)
+                sub_text = f"{_fmt_usd(used)} of {_fmt_usd(float(sponsorship_total))} used"
+            elif drain:
+                sub_text = f"{_fmt_usd(drain * 30)}/month burn"
             else:
-                headline = _fmt_usd(remaining)
-                headline_label = "credits left"
                 sub_text = "sponsorship"
         else:
             headline = _fmt_usd(total)
@@ -746,6 +742,7 @@ class AzureProvider(UsageProvider):
             headline=headline,
             headline_label=headline_label,
             sub=sub_text,
+            percent=percent,
             error="; ".join(errors)[:300],
             items=items,
             last_updated=datetime.now(timezone.utc),
@@ -836,35 +833,46 @@ class BedrockProvider(UsageProvider):
         headline = _fmt_usd(bedrock_total)
         headline_label = "Bedrock this month"
         sub = ""
+        percent: float | None = None
         if anchor:
             remaining_est = (
                 float(self.account["credits_remaining"]) - credits_since_anchor
             )
+            credits_total = self.account.get("credits_total")
             headline = _fmt_usd(remaining_est)
             headline_label = "credits left (est.)"
-            sub = f"{_fmt_usd(bedrock_total)} Bedrock this month"
+            if credits_total:
+                used = float(credits_total) - remaining_est
+                percent = 100 * used / float(credits_total)
+                sub = f"{_fmt_usd(used)} of {_fmt_usd(float(credits_total))} used"
+            else:
+                sub = f"{_fmt_usd(bedrock_total)} Bedrock this month"
             items.append(UsageItem(
-                label="AWS credits left (est.)",
-                value=_fmt_usd(remaining_est),
-                sub=f"{_fmt_usd(float(self.account['credits_remaining']))} on "
-                    f"{anchor} minus {_fmt_usd(credits_since_anchor)} consumed "
-                    "since — balance is console-only, update the anchor there",
+                label="Balance anchor",
+                value=str(anchor),
+                sub="update from AWS console → Billing → Credits",
             ))
         items.append(UsageItem(
-            label="Bedrock usage", value=_fmt_usd(bedrock_total), sub="this month",
+            label="Bedrock this month", value=_fmt_usd(bedrock_total),
         ))
         items.append(UsageItem(
-            label="Account usage", value=_fmt_usd(account_total), sub="this month",
+            label="Account total this month", value=_fmt_usd(account_total),
         ))
-        items.extend(
-            UsageItem(label=svc, value=_fmt_usd(cost), sub="this month")
-            for svc, cost in sorted(costs, key=lambda x: -x[1])
+        bedrock_costs = [
+            (svc, cost) for svc, cost in sorted(costs, key=lambda x: -x[1])
             if self._is_bedrock(svc) and cost >= 0.01
+        ]
+        items.extend(
+            UsageItem(
+                # "Claude Opus 4.7 (Amazon Bedrock Edition)" → "Claude Opus 4.7"
+                label=re.sub(r"\s*\(Amazon Bedrock Edition\)", "", svc),
+                value=_fmt_usd(cost),
+            )
+            for svc, cost in bedrock_costs[:3]
         )
         if credits_mtd >= 0.01:
             items.append(UsageItem(
-                label="AWS credits applied", value=_fmt_usd(credits_mtd),
-                sub="this month",
+                label="Credits applied this month", value=_fmt_usd(credits_mtd),
             ))
 
         return ProviderUsage(
@@ -872,6 +880,7 @@ class BedrockProvider(UsageProvider):
             headline=headline,
             headline_label=headline_label,
             sub=sub,
+            percent=percent,
             items=items,
             last_updated=datetime.now(timezone.utc),
         )

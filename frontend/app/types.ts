@@ -57,6 +57,7 @@ export interface ProviderUsage {
   headline: string;
   headline_label: string;
   sub: string;
+  percent: number | null;
   error: string;
   items: UsageItem[];
   last_updated: string | null;

@@ -56,7 +56,10 @@ class ProviderUsage(BaseModel):
     status: str = Field(description="ok | auth_needed | error")
     headline: str = "—"
     headline_label: str = ""
-    sub: str = ""
+    sub: str = Field(default="", description="usage line shown under the headline")
+    percent: float | None = Field(
+        default=None, description="0-100 consumed; renders a depletion bar"
+    )
     error: str = ""
     items: list[UsageItem] = Field(default_factory=list)
     last_updated: datetime | None = None
