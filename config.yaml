@@ -38,12 +38,16 @@ usage:
   bedrock_profiles:
     - name: stackwise
       profile: default   # stackwise-agent user lacks ce:GetCostAndUsage; default (silen) is the same account
-      # credits_remaining: 100000
-      # credits_as_of: 2026-07-08
+      # $100k grant minus $73,156 consumed within Cost Explorer's 13-month
+      # window — consumption predates the window, so this is an UPPER BOUND;
+      # correct from AWS console → Billing → Credits
+      credits_remaining: 26843
+      credits_as_of: 2026-07-08
     - name: endflow
       profile: endflow
-      # credits_remaining: 5000
-      # credits_as_of: 2026-07-08
+      # $100k grant minus $353 consumed (usage began May 2026, fully measured)
+      credits_remaining: 99647
+      credits_as_of: 2026-07-08
 hosts:
   - name: h100-dev-box
     ip: 4.154.170.26
