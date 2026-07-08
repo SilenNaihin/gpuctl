@@ -686,11 +686,11 @@ class AzureProvider(UsageProvider):
             # Show the drain-projected balance when the manual entry is stale
             if projected is not None and projected < remaining:
                 headline = _fmt_usd(projected)
-                headline_label = "sponsorship credits left (est.)"
-                sub_text = f"projected from {as_of} balance"
+                headline_label = "credits left (est.)"
+                sub_text = f"est. from {as_of}"
             else:
                 headline = _fmt_usd(remaining)
-                headline_label = "sponsorship credits left"
+                headline_label = "credits left"
                 sub_text = f"as of {as_of}"
         else:
             headline = _fmt_usd(total)
