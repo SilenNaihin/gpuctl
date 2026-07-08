@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -55,6 +55,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def html_no_cache(request: Request, call_next):
+    """Stop browsers from caching HTML across deploys.
+
+    Next's JS/CSS chunks are content-hashed and safe to cache, but the HTML
+    that references them is not — without this, browsers keep showing the
+    previous build after a deploy.
+    """
+    response = await call_next(request)
+    if "text/html" in response.headers.get("content-type", ""):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/api/status", response_model=FleetStatus)
