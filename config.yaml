@@ -8,6 +8,12 @@ usage:
   azure_poll_interval_minutes: 60    # Cost Management API throttles hard
   bedrock_poll_interval_minutes: 180 # Cost Explorer bills $0.01/request
   codex_auth_path: ~/.codex/auth.json
+  # Anthropic has no credit-balance API. Paste the balance from
+  # console.anthropic.com → Billing once; the dashboard subtracts measured
+  # API spend since that date:
+  # anthropic_credits:
+  #   remaining: 50000
+  #   as_of: 2026-07-08
   # Legacy sponsorship balances have no API — paste from
   # microsoftazuresponsorships.com and update occasionally:
   azure_sponsorship:
@@ -26,11 +32,18 @@ usage:
       sponsorship: true
     - name: Subscription 1
       id: 800aa0f3-2eb4-47a2-a0a1-7f463a53d1d7
+  # AWS has no credit-balance API either. Paste each account's balance from
+  # AWS console → Billing → Credits once (credits_remaining/credits_as_of);
+  # the dashboard subtracts credits consumed since that date.
   bedrock_profiles:
     - name: stackwise
       profile: default   # stackwise-agent user lacks ce:GetCostAndUsage; default (silen) is the same account
+      # credits_remaining: 100000
+      # credits_as_of: 2026-07-08
     - name: endflow
       profile: endflow
+      # credits_remaining: 5000
+      # credits_as_of: 2026-07-08
 hosts:
   - name: h100-dev-box
     ip: 4.154.170.26

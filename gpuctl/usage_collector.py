@@ -117,6 +117,10 @@ class AnthropicProvider(UsageProvider):
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.poll_interval = config.get("poll_interval_minutes", 30) * 60
+        # Anthropic exposes no credit-balance API. Enter the console balance
+        # once ({remaining, as_of}); the collector subtracts cost-report
+        # spend accrued since that date to keep the estimate current.
+        self.credits: dict[str, Any] = config.get("anthropic_credits") or {}
 
     @staticmethod
     def _api_key() -> str | None:
@@ -197,12 +201,22 @@ class AnthropicProvider(UsageProvider):
 
     async def _fetch_admin(self, admin_key: str) -> ProviderUsage:
         headers = {"x-api-key": admin_key, "anthropic-version": "2023-06-01"}
-        starting_at = _month_start().strftime("%Y-%m-%dT%H:%M:%SZ")
+        month_start = _month_start()
+        anchor: datetime | None = None
+        if self.credits.get("remaining") is not None and self.credits.get("as_of"):
+            anchor = datetime.fromisoformat(
+                str(self.credits["as_of"])
+            ).replace(tzinfo=timezone.utc)
+
+        # One paginated pass from the earlier of (anchor, month start) gives
+        # both month-to-date spend and spend-since-anchor.
+        earliest = min(anchor, month_start) if anchor else month_start
+        starting_at = earliest.strftime("%Y-%m-%dT%H:%M:%SZ")
         total = 0.0
+        since_anchor = 0.0
         items: list[UsageItem] = []
 
         async with httpx.AsyncClient(timeout=30) as client:
-            # Month-to-date cost, paginated daily buckets.
             # `amount` is a decimal string in CENTS ("123.45" == $1.23).
             page: str | None = None
             while True:
@@ -216,22 +230,31 @@ class AnthropicProvider(UsageProvider):
                 resp.raise_for_status()
                 body = resp.json()
                 for bucket in body.get("data", []):
+                    bucket_start = datetime.fromisoformat(
+                        bucket["starting_at"].replace("Z", "+00:00")
+                    )
+                    amount = 0.0
                     for result in bucket.get("results", []):
                         try:
-                            total += float(result.get("amount", 0)) / 100.0
+                            amount += float(result.get("amount", 0)) / 100.0
                         except (TypeError, ValueError):
                             pass
+                    if bucket_start >= month_start:
+                        total += amount
+                    if anchor and bucket_start >= anchor:
+                        since_anchor += amount
                 if body.get("has_more") and body.get("next_page"):
                     page = body["next_page"]
                 else:
                     break
 
             # Token usage by model for the expansion view
+            usage_start = month_start.strftime("%Y-%m-%dT%H:%M:%SZ")
             resp = await client.get(
                 f"{ANTHROPIC_API}/v1/organizations/usage_report/messages",
                 headers=headers,
                 params={
-                    "starting_at": starting_at,
+                    "starting_at": usage_start,
                     "bucket_width": "1d",
                     "group_by[]": "model",
                     "limit": 31,
@@ -258,9 +281,31 @@ class AnthropicProvider(UsageProvider):
                         sub="tokens this month",
                     ))
 
+        if anchor is not None:
+            remaining_est = float(self.credits["remaining"]) - since_anchor
+            items.insert(0, UsageItem(
+                label="Credits left (est.)",
+                value=_fmt_usd(remaining_est),
+                sub=f"{_fmt_usd(float(self.credits['remaining']))} on "
+                    f"{self.credits['as_of']} minus {_fmt_usd(since_anchor)} "
+                    "spent since — update anchor from console.anthropic.com",
+            ))
+            items.insert(1, UsageItem(
+                label="API spend", value=_fmt_usd(total), sub="this month",
+            ))
+            return ProviderUsage(
+                id=self.id, name=self.name, status="ok",
+                headline=_fmt_usd(remaining_est),
+                headline_label="credits left (est.)",
+                sub=f"{_fmt_usd(total)} spent this month",
+                items=items,
+                last_updated=datetime.now(timezone.utc),
+            )
+
         items.append(UsageItem(
             label="Credit balance", value="console only",
-            sub="not exposed via API — console.anthropic.com → Billing",
+            sub="no API — set usage.anthropic_credits {remaining, as_of} in "
+                "config.yaml from console.anthropic.com → Billing",
         ))
         return ProviderUsage(
             id=self.id, name=self.name, status="ok",
@@ -449,7 +494,7 @@ class OpenAIProvider(UsageProvider):
             status="error" if rate.get("limit_reached") else "ok",
             headline=f"{primary_pct:.0f}%",
             headline_label="of Codex 5h limit used",
-            sub=f"Codex · ChatGPT {plan}",
+            sub=f"ChatGPT {plan}",
             items=items,
             last_updated=datetime.now(timezone.utc),
         )
@@ -687,11 +732,11 @@ class AzureProvider(UsageProvider):
             if projected is not None and projected < remaining:
                 headline = _fmt_usd(projected)
                 headline_label = "credits left (est.)"
-                sub_text = f"est. from {as_of}"
+                sub_text = "sponsorship"
             else:
                 headline = _fmt_usd(remaining)
                 headline_label = "credits left"
-                sub_text = f"as of {as_of}"
+                sub_text = "sponsorship"
         else:
             headline = _fmt_usd(total)
             headline_label = "spend this month"
@@ -710,37 +755,43 @@ class AzureProvider(UsageProvider):
 # --- AWS Bedrock ---
 
 class BedrockProvider(UsageProvider):
-    id = "bedrock"
-    name = "Bedrock"
+    """One card per AWS account.
 
-    def __init__(self, config: dict[str, Any]) -> None:
+    Both accounts run on AWS credits, so unfiltered UnblendedCost nets to
+    ~$0 (usage offset by negative Credit records). Gross usage requires
+    excluding Credit/Refund record types. AWS has no credit-balance API —
+    like the other providers, an anchor {credits_remaining, credits_as_of}
+    in config is decremented by credits consumed since that date.
+    """
+
+    def __init__(self, account: dict[str, Any], config: dict[str, Any]) -> None:
         # Cost Explorer charges $0.01/request — keep this interval long
         self.poll_interval = config.get("bedrock_poll_interval_minutes", 180) * 60
-        self.profiles: list[dict[str, str]] = config.get("bedrock_profiles", [])
+        self.account = account
+        self.id = f"bedrock-{account['name']}"
+        self.name = str(account["name"]).capitalize()
 
     @staticmethod
     def _is_bedrock(service: str) -> bool:
         s = service.lower()
         return "bedrock" in s or "claude" in s
 
-    async def _query_account(
-        self, account: dict[str, str]
-    ) -> tuple[float, float, float, list[UsageItem]]:
-        """Returns (bedrock_usage, account_usage, credits_applied, items).
+    async def fetch(self) -> ProviderUsage:
+        month_start = _month_start()
+        anchor: str | None = None
+        if self.account.get("credits_remaining") is not None and \
+                self.account.get("credits_as_of"):
+            anchor = str(self.account["credits_as_of"])
 
-        Both accounts run on AWS credits, so unfiltered UnblendedCost nets to
-        ~$0 (usage offset by negative Credit records). Gross usage requires
-        excluding Credit/Refund record types.
-        """
-        start = _month_start().strftime("%Y-%m-%d")
+        start = month_start.strftime("%Y-%m-%d")
+        credit_start = min(anchor, start) if anchor else start
         end = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
-        period = f"Start={start},End={end}"
 
-        usage_out, record_out = await asyncio.gather(
+        usage_out, credit_out = await asyncio.gather(
             _run_cli(
                 "aws", "ce", "get-cost-and-usage",
-                "--profile", account["profile"],
-                "--time-period", period,
+                "--profile", self.account["profile"],
+                "--time-period", f"Start={start},End={end}",
                 "--granularity", "MONTHLY",
                 "--metrics", "UnblendedCost",
                 "--group-by", "Type=DIMENSION,Key=SERVICE",
@@ -752,11 +803,12 @@ class BedrockProvider(UsageProvider):
             ),
             _run_cli(
                 "aws", "ce", "get-cost-and-usage",
-                "--profile", account["profile"],
-                "--time-period", period,
-                "--granularity", "MONTHLY",
+                "--profile", self.account["profile"],
+                "--time-period", f"Start={credit_start},End={end}",
+                "--granularity", "DAILY",
                 "--metrics", "UnblendedCost",
-                "--group-by", "Type=DIMENSION,Key=RECORD_TYPE",
+                "--filter",
+                '{"Dimensions":{"Key":"RECORD_TYPE","Values":["Credit"]}}',
                 "--output", "json",
                 timeout=90,
             ),
@@ -770,62 +822,56 @@ class BedrockProvider(UsageProvider):
         account_total = sum(c for _, c in costs)
         bedrock_total = sum(c for svc, c in costs if self._is_bedrock(svc))
 
-        credits_applied = 0.0
-        for g in json.loads(record_out)["ResultsByTime"][0].get("Groups", []):
-            if g["Keys"][0] == "Credit":
-                credits_applied = -float(g["Metrics"]["UnblendedCost"]["Amount"])
+        # Credits appear as negative amounts; buckets are daily
+        credits_mtd = 0.0
+        credits_since_anchor = 0.0
+        for bucket in json.loads(credit_out)["ResultsByTime"]:
+            amount = -float(bucket["Total"]["UnblendedCost"]["Amount"])
+            if bucket["TimePeriod"]["Start"] >= start:
+                credits_mtd += amount
+            if anchor and bucket["TimePeriod"]["Start"] >= anchor:
+                credits_since_anchor += amount
 
-        items = [
-            UsageItem(
-                label=f"{account['name']} · {svc}",
-                value=_fmt_usd(cost),
-                sub="this month",
+        items: list[UsageItem] = []
+        headline = _fmt_usd(bedrock_total)
+        headline_label = "Bedrock this month"
+        sub = ""
+        if anchor:
+            remaining_est = (
+                float(self.account["credits_remaining"]) - credits_since_anchor
             )
+            headline = _fmt_usd(remaining_est)
+            headline_label = "credits left (est.)"
+            sub = f"{_fmt_usd(bedrock_total)} Bedrock this month"
+            items.append(UsageItem(
+                label="AWS credits left (est.)",
+                value=_fmt_usd(remaining_est),
+                sub=f"{_fmt_usd(float(self.account['credits_remaining']))} on "
+                    f"{anchor} minus {_fmt_usd(credits_since_anchor)} consumed "
+                    "since — balance is console-only, update the anchor there",
+            ))
+        items.append(UsageItem(
+            label="Bedrock usage", value=_fmt_usd(bedrock_total), sub="this month",
+        ))
+        items.append(UsageItem(
+            label="Account usage", value=_fmt_usd(account_total), sub="this month",
+        ))
+        items.extend(
+            UsageItem(label=svc, value=_fmt_usd(cost), sub="this month")
             for svc, cost in sorted(costs, key=lambda x: -x[1])
             if self._is_bedrock(svc) and cost >= 0.01
-        ][:4]
-        return bedrock_total, account_total, credits_applied, items
-
-    async def fetch(self) -> ProviderUsage:
-        bedrock_total = 0.0
-        items: list[UsageItem] = []
-        errors: list[str] = []
-        results = await asyncio.gather(
-            *[self._query_account(a) for a in self.profiles],
-            return_exceptions=True,
         )
-        for account, result in zip(self.profiles, results):
-            if isinstance(result, BaseException):
-                errors.append(f"{account['name']}: {result}")
-                continue
-            b_total, a_total, credits, a_items = result
-            bedrock_total += b_total
+        if credits_mtd >= 0.01:
             items.append(UsageItem(
-                label=account["name"],
-                value=f"{_fmt_usd(b_total)} Bedrock",
-                sub=f"account usage {_fmt_usd(a_total)} this month",
+                label="AWS credits applied", value=_fmt_usd(credits_mtd),
+                sub="this month",
             ))
-            items.extend(a_items)
-            if credits >= 0.01:
-                items.append(UsageItem(
-                    label=f"{account['name']} · AWS credits applied",
-                    value=_fmt_usd(credits),
-                    sub="credits consumed this month (balance is console-only)",
-                ))
 
-        if errors and not items:
-            return ProviderUsage(
-                id=self.id, name=self.name, status="error",
-                headline_label="Cost Explorer query failed",
-                error="; ".join(errors)[:300],
-                last_updated=datetime.now(timezone.utc),
-            )
         return ProviderUsage(
             id=self.id, name=self.name, status="ok",
-            headline=_fmt_usd(bedrock_total),
-            headline_label="Bedrock usage this month",
-            sub=" + ".join(a["name"] for a in self.profiles),
-            error="; ".join(errors)[:300],
+            headline=headline,
+            headline_label=headline_label,
+            sub=sub,
             items=items,
             last_updated=datetime.now(timezone.utc),
         )
@@ -840,7 +886,10 @@ class UsageCollector:
             AnthropicProvider(usage_cfg),
             OpenAIProvider(usage_cfg),
             AzureProvider(usage_cfg),
-            BedrockProvider(usage_cfg),
+            *[
+                BedrockProvider(account, usage_cfg)
+                for account in usage_cfg.get("bedrock_profiles", [])
+            ],
         ]
         self._cache: dict[str, ProviderUsage] = {}
         self._next_poll: dict[str, float] = {p.id: 0 for p in self._providers}
